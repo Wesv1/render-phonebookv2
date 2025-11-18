@@ -6,7 +6,7 @@ app.use(express.static("dist"));
 
 app.use(express.json()); //required for body
 app.use(morgan("tiny"));
-app.use(cors());
+// app.use(cors());
 
 let persons = [
   {
