@@ -1,109 +1,91 @@
-const express = require("express");
-const app = express();
-const morgan = require("morgan");
-const cors = require("cors");
-app.use(express.static("dist"));
+require('dotenv').config()
+const express = require("express")
+const morgan = require("morgan")
+const cors = require("cors")
+const mongoose = require('mongoose')
 
-app.use(express.json()); //required for body
-app.use(morgan("tiny"));
-// app.use(cors());
+const app = express()
+app.use(express.static("dist"))
+app.use(express.json())
+app.use(morgan("tiny"))
+app.use(cors())
 
-let persons = [
-  {
-    id: "1",
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: "2",
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: "3",
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: "4",
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-  {
-    id: "5",
-    name: "Wesley Snipes",
-    number: "45-65-1253658",
-  },
-];
+// MONGOOSE MODEL
+const Person = require('./phonebook_backend/models/contacts') 
 
-// const generateId = () => {
-//   const ids = persons.map((p) => Number(p.id));
-//   const maxId = persons.length > 0 ? Math.max(...ids) : 0;
-//   return maxId + 1;
-// };
+// MONGODB 
+mongoose.set('strictQuery', false)
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch(err => console.error("MongoDB connection error:", err.message))
 
-const randomID = () => {
-  const min = 1;
-  const max = 100000;
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-};
 
-// delete singular ID
-app.delete("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  persons = persons.filter((person) => person.id !== id);
-  response.status(204).end();
-});
 
-// Find singular id
-app.get("/api/persons/:id", (request, response) => {
-  const id = request.params.id;
-  const person = persons.find((person) => person.id === id);
-  response.json(person);
-});
 
-app.get("/api/persons", (request, response) => {
-  response.json(persons);
-});
+// GET ALL PERSONS
+app.get('/api/persons', (req, res) => {
+  Person.find({})
+    .then(persons => res.json(persons))
+})
 
-app.get("/api/morgan", (request, response) => {
-  response.send("Morgan test successful");
-});
+// GET SINGLE PERSON
+app.get('/api/persons/:id', (req, res, next) => {
+  Person.findById(req.params.id)
+    .then(person => {
+      if (person) res.json(person)
+      else res.status(404).end()
+    })
+    .catch(error => next(error))
+})
 
-// ADD someone
-app.post("/api/persons", (request, response) => {
-  const body = request.body;
-  const personNames = persons.map((person) => person.name);
+// CREATE NEW PERSON
+app.post('/api/persons', (req, res, next) => {
+  const body = req.body
 
   if (!body.name || !body.number) {
-    return response.status(400).json({ error: "Name or number missing" });
-  }
-  if (personNames.includes(body.name)) {
-    return response.status(409).json({ error: "Name must be unique" });
+    return res.status(400).json({ error: 'name or number missing' })
   }
 
-  const person = {
+  const person = new Person({
     name: body.name,
-    number: body.number,
-    id: String(randomID()),
-  };
+    number: body.number
+  })
 
-  persons = persons.concat(person);
-  response.json(person);
-});
+  person.save()
+    .then(savedPerson => res.json(savedPerson))
+    .catch(error => next(error))
+})
 
-app.get("/info", (request, response) => {
-  const ids = persons.length;
+// DELETE PERSON
+app.delete('/api/persons/:id', (req, res, next) => {
+  Person.findByIdAndRemove(req.params.id)
+    .then(() => res.status(204).end())
+    .catch(error => next(error))
+})
 
-  const date = require("date-and-time");
-  const now = new Date();
-  const formatted = date.format(now, "DD/MM/YYYY HH:MM:SS");
+// INFO PAGE
+app.get("/info", (req, res, next) => {
+  Person.countDocuments({})
+    .then(count => {
+      const now = new Date()
+      res.send(
+        `<p>Phonebook has info for ${count} people</p><p>${now}</p>`
+      )
+    })
+    .catch(error => next(error))
+})
 
-  console.log(formatted);
-  response.send(`Phonebook has info for ${ids} people ${formatted} GMT`);
-});
+// ERROR HANDLER
+app.use((error, req, res, next) => {
+  console.error(error.message)
+  if (error.name === 'CastError') {
+    return res.status(400).send({ error: 'malformatted id' })
+  }
+  next(error)
+})
 
-const PORT = process.env.PORT || 3001;
+
+const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  console.log(`Server running on port ${PORT}`)
+})
